@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=2.0, minimum-scale=0.5">
+  <title>英文名著阅读器</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e; color: #e0e0e0;
+      display: flex; justify-content: center;
+      min-height: 100vh; padding: 10px;
+    }
+    .container {
+      width: 100%; max-width: 500px; background: #1e1e30;
+      border-radius: 16px; padding: 15px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    }
+    h1 { text-align: center; font-size: 1.2rem; color: #c4b5fd; margin-bottom: 4px; }
+    .status-bar { text-align: center; font-size: 10px; color: #8a8aaa; margin-bottom: 6px; }
+    .file-manager {
+      display: flex; gap: 6px; margin-bottom: 6px; align-items: center;
+      background: #232338; border-radius: 10px; padding: 6px 10px; font-size: 11px;
+    }
+    .file-info { flex: 1; color: #a0a0b8; }
+    .file-info .name { color: #e0e0e0; font-weight: 500; display: block; }
+    .file-info .detail { font-size: 10px; }
+    .file-btn {
+      background: #3f3f5c; border: none; color: #e0e0e0;
+      padding: 5px 8px; border-radius: 6px; cursor: pointer;
+      font-size: 11px; white-space: nowrap;
+    }
+    .file-btn:hover { background: #56567a; }
+    .file-btn.danger { background: #5c3f3f; }
+    .controls {
+      display: flex; justify-content: center; align-items: center;
+      gap: 6px; margin-bottom: 8px;
+    }
+    .controls button {
+      background: #3f3f5c; border: none; color: #e0e0e0;
+      padding: 7px 10px; border-radius: 8px; cursor: pointer;
+      font-size: 13px; touch-action: manipulation; min-width: 36px;
+    }
+    .controls button:hover { background: #56567a; }
+    .controls button.active { background: #a78bfa; color: #1e1e2e; font-weight: 600; }
+    .controls .counter { font-size: 11px; color: #a0a0b8; min-width: 60px; text-align: center; }
+    .en-section {
+      background: #232338; border-radius: 10px; padding: 8px;
+      margin-bottom: 8px; border: 1px solid #3f3f5c; position: relative;
+    }
+    .section-title {
+      font-size: 10px; color: #8a8aaa; text-align: center;
+      margin-bottom: 6px; padding-bottom: 4px;
+      border-bottom: 1px solid #3f3f5c;
+    }
+    .sentence-item {
+      padding: 8px 8px; border-radius: 8px; cursor: pointer;
+      margin-bottom: 4px; transition: background 0.15s;
+    }
+    .sentence-item.active { background: #2d2d4a; border-left: 3px solid #a78bfa; }
+    .sentence-item.speaking { background: #3d2d5a; border-left: 3px solid #c4b5fd; }
+    .sentence-item .en-text {
+      font-size: 15px; line-height: 1.6; color: #f1f1f1;
+      word-wrap: break-word; user-select: text;
+    }
+
+    /* 悬浮窗 */
+    .popup-overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      z-index: 998; display: none;
+    }
+    .popup-overlay.show { display: block; }
+    .word-popup {
+      position: fixed; z-index: 999;
+      background: #2a2a44; border: 1px solid #a78bfa;
+      border-radius: 12px; padding: 12px 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      min-width: 120px; max-width: 280px;
+      animation: popIn 0.2s ease-out;
+    }
+    @keyframes popIn {
+      from { opacity: 0; transform: scale(0.9); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .word-popup .popup-word {
+      font-size: 16px; font-weight: 600; color: #c4b5fd;
+      text-align: center; margin-bottom: 6px; text-transform: lowercase;
+    }
+    .word-popup .popup-meaning {
+      font-size: 13px; color: #e0e0e0; text-align: center;
+      line-height: 1.5; word-wrap: break-word;
+    }
+    .word-popup .popup-close {
+      position: absolute; top: 4px; right: 8px;
+      background: none; border: none; color: #8a8aaa;
+      font-size: 14px; cursor: pointer; padding: 2px 4px;
+    }
+
+    .zh-section {
+      background: #1d1d2e; border-radius: 10px; padding: 8px;
+      border: 1px solid #3f3f5c; min-height: 80px;
+    }
+    .zh-section .section-title {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 6px; padding-bottom: 4px;
+      border-bottom: 1px solid #3f3f5c;
+      font-size: 10px; color: #8a8aaa;
+    }
+    .zh-sentence-item {
+      font-size: 13px; line-height: 1.7; color: #c0c0d0;
+      padding: 2px 0; word-wrap: break-word;
+    }
+    .zh-empty { text-align: center; color: #6a6a8a; font-size: 12px; padding: 15px; }
+    .info { font-size: 9px; color: #7a7a99; text-align: center; margin-top: 6px; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>📖 英文名著阅读器</h1>
+  <div class="status-bar" id="statusBar">词典加载中...</div>
+
+  <div class="file-manager">
+    <div class="file-info">
+      <span class="name" id="enFileName">未导入英文文件</span>
+      <span class="detail" id="enFileDetail"></span>
+    </div>
+    <button class="file-btn" id="enImportBtn">📗 导入</button>
+    <button class="file-btn danger hidden" id="enRemoveBtn">✕</button>
+	<input type="file" id="enFileInput" accept="text/plain" class="hidden">
+  </div>
+
+  <div class="file-manager">
+    <div class="file-info">
+      <span class="name" id="zhFileName">未导入中文译文</span>
+      <span class="detail" id="zhFileDetail"></span>
+    </div>
+    <button class="file-btn" id="zhImportBtn">📕 导入</button>
+    <button class="file-btn danger hidden" id="zhRemoveBtn">✕</button>
+    <input type="file" id="zhFileInput" accept="text/plain" class="hidden">
+  </div>
+
+  <div class="controls" id="controls">
+    <button id="prevBtn">◀</button>
+    <span class="counter" id="counter">0/0</span>
+    <button id="nextBtn">▶</button>
+    <button id="speakBtn">🔊</button>
+    <button id="autoBtn">▶连续</button>
+    <button id="stopBtn" class="hidden">⏹</button>
+    <button id="speedBtn">1x</button>
+  </div>
+
+  <div class="en-section" id="enSection">
+    <div class="section-title">📗 英文原文（点击单词查释义，双击句子朗读）</div>
+    <div id="enDisplay">
+      <div style="text-align:center;color:#6a6a8a;padding:20px;">请导入英文文件</div>
+    </div>
+  </div>
+
+  <div class="zh-section">
+    <div class="section-title">
+      <span>📕 中文译文（手动翻页）</span>
+      <span style="display:flex;gap:4px;">
+        <button class="file-btn" id="zhPagePrev">◀</button>
+        <span id="zhPageInfo" style="font-size:10px;">-/-</span>
+        <button class="file-btn" id="zhPageNext">▶</button>
+      </span>
+    </div>
+    <div id="zhDisplay">
+      <div class="zh-empty">导入中文译文后可在此对照查看</div>
+    </div>
+  </div>
+
+  <div class="info">💡 点击单词弹出释义 | 再点关闭 | 双击句子朗读 | 中文区手动翻页</div>
+</div>
+
+<div class="popup-overlay" id="popupOverlay"></div>
+<div class="word-popup hidden" id="wordPopup">
+  <button class="popup-close" id="popupClose">✕</button>
+  <div class="popup-word" id="popupWord"></div>
+  <div class="popup-meaning" id="popupMeaning"></div>
+</div>
+
+<script src="dict.js"></script>
+
+<script>
+(function() {
+  const enFileInput = document.getElementById('enFileInput');
+  const zhFileInput = document.getElementById('zhFileInput');
+  const enImportBtn = document.getElementById('enImportBtn');
+  const zhImportBtn = document.getElementById('zhImportBtn');
+  const enRemoveBtn = document.getElementById('enRemoveBtn');
+  const zhRemoveBtn = document.getElementById('zhRemoveBtn');
+  const enFileName = document.getElementById('enFileName');
+  const zhFileName = document.getElementById('zhFileName');
+  const enFileDetail = document.getElementById('enFileDetail');
+  const zhFileDetail = document.getElementById('zhFileDetail');
+  const enDisplay = document.getElementById('enDisplay');
+  const zhDisplay = document.getElementById('zhDisplay');
+  const zhPagePrev = document.getElementById('zhPagePrev');
+  const zhPageNext = document.getElementById('zhPageNext');
+  const zhPageInfo = document.getElementById('zhPageInfo');
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const speakBtn = document.getElementById('speakBtn');
+  const autoBtn = document.getElementById('autoBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const speedBtn = document.getElementById('speedBtn');
+  const counter = document.getElementById('counter');
+  const statusBar = document.getElementById('statusBar');
+  const popupOverlay = document.getElementById('popupOverlay');
+  const wordPopup = document.getElementById('wordPopup');
+  const popupWord = document.getElementById('popupWord');
+  const popupMeaning = document.getElementById('popupMeaning');
+  const popupClose = document.getElementById('popupClose');
+
+  let enSentences = [];
+  let zhSentences = [];
+  let currentIndex = 0;
+  let currentZhPage = 0;
+  const ZH_PAGE_SIZE = 5;
+  let speakRate = 1.0;
+  let isAutoPlaying = false;
+  const speechSynth = window.speechSynthesis;
+  const STORAGE_KEY = 'reader_progress_v10';
+  let lastClickTime = 0;
+  let clickTimeout = null;
+
+  // ========== 离线词典 ==========
+  let offlineDict = {};
+  let dictLoaded = false;
+
+  function initDictionary() {
+    let rawDict = null;
+    if (window.offlineDict && typeof window.offlineDict === 'object') {
+      rawDict = window.offlineDict;
+    } else if (typeof wordMeaning !== 'undefined' && typeof wordMeaning === 'object') {
+      rawDict = wordMeaning;
+    }
+    if (rawDict) {
+      const cleaned = {};
+      for (const key in rawDict) {
+        cleaned[key.replace(/^\$/, '').toLowerCase().trim()] = rawDict[key];
+      }
+      offlineDict = cleaned;
+      dictLoaded = true;
+      statusBar.textContent = `✅ 词典已加载 (${Object.keys(cleaned).length} 词)`;
+    } else {
+      statusBar.textContent = '⚠️ 词典未加载';
+    }
+  }
+
+  function lookupOffline(word) {
+    if (!dictLoaded) return null;
+    let clean = word.replace(/[^a-zA-Z]/g, '').toLowerCase().trim();
+    if (!clean || clean.length < 2) return null;
+
+    if (offlineDict[clean]) return offlineDict[clean];
+
+    const suffixes = [
+      ['s', ''], ['es', ''], ['ies', 'y'], ['ves', 'f'], ['ves', 'fe'],
+      ['ed', ''], ['ied', 'y'], ['d', ''], ['ing', ''], ['ing', 'e'],
+      ['er', ''], ['est', ''], ['ly', ''], ['ment', ''], ['ness', ''],
+      ['tion', ''], ['able', ''], ['ible', ''], ['ful', ''], ['less', ''],
+      ['ous', ''], ['ive', ''], ['al', ''], ['ic', ''], ['ish', ''], ['y', ''],
+    ];
+    for (const [suffix, replacement] of suffixes) {
+      if (clean.endsWith(suffix)) {
+        const stem = clean.slice(0, -suffix.length) + replacement;
+        if (stem.length >= 2 && offlineDict[stem]) return offlineDict[stem];
+      }
+    }
+    if (offlineDict[clean + 'e']) return offlineDict[clean + 'e'];
+    return null;
+  }
+
+  // ========== 悬浮窗 ==========
+  function showPopup(word, meaning) {
+    popupWord.textContent = word.toLowerCase().replace(/[^a-z]/g, '');
+    popupMeaning.textContent = meaning;
+    wordPopup.classList.remove('hidden');
+    popupOverlay.classList.add('show');
+    const rect = document.querySelector('.container').getBoundingClientRect();
+    wordPopup.style.left = (rect.left + rect.width / 2) + 'px';
+    wordPopup.style.top = (rect.top + rect.height / 2 - 80) + 'px';
+    wordPopup.style.transform = 'translate(-50%, -50%)';
+  }
+
+  function hidePopup() {
+    wordPopup.classList.add('hidden');
+    popupOverlay.classList.remove('show');
+  }
+
+  popupClose.addEventListener('click', (e) => { e.stopPropagation(); hidePopup(); });
+  popupOverlay.addEventListener('click', hidePopup);
+
+  // ========== 获取点击位置的单词 ==========
+  function getWordAtPoint(event) {
+    // 先检查是否有选中文字
+    const selection = window.getSelection();
+    const selectedText = selection.toString().trim();
+    if (selectedText && /^[a-zA-Z]+$/.test(selectedText) && selectedText.length > 1) {
+      return selectedText;
+    }
+
+    // 用坐标获取
+    let range;
+    if (document.caretRangeFromPoint) {
+      range = document.caretRangeFromPoint(event.clientX, event.clientY);
+    } else if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(event.clientX, event.clientY);
+      if (pos) {
+        range = document.createRange();
+        range.setStart(pos.offsetNode, pos.offset);
+        range.setEnd(pos.offsetNode, pos.offset);
+      }
+    }
+    if (!range || !range.startContainer || range.startContainer.nodeType !== Node.TEXT_NODE) {
+      return selectedText || null;
+    }
+
+    const text = range.startContainer.textContent;
+    let start = range.startOffset, end = range.startOffset;
+    while (start > 0 && /[a-zA-Z]/.test(text[start - 1])) start--;
+    while (end < text.length && /[a-zA-Z]/.test(text[end])) end++;
+    const word = text.slice(start, end).trim();
+    if (word && /^[a-zA-Z]+$/.test(word) && word.length > 1) return word;
+    return selectedText || null;
+  }
+
+  // ========== 文本处理 ==========
+  function cleanText(text) {
+    text = text.replace(/\uFFFD/g, '').replace(/\u0000/g, '');
+    const lines = text.split(/\r?\n/);
+    const result = [];
+    for (let line of lines) {
+      line = line.replace(/\u3000/g, ' ').replace(/\u00A0/g, ' ').replace(/\u200B/g, '').replace(/\uFEFF/g, '').trim();
+      if (!line) continue;
+      if (/^https?:\/\//i.test(line) || /^www\./i.test(line)) continue;
+      if (line.replace(/\s/g, '').length < 2) continue;
+      result.push(line);
+    }
+    return result.join('\n');
+  }
+
+  function splitEnglish(text) {
+    const result = [];
+    const lines = text.split('\n').filter(l => l.trim().length > 0);
+    for (let line of lines) {
+      const parts = line
+        .replace(/(?<!\bMr)(?<!\bMrs)(?<!\bMs)(?<!\bDr)(?<!\bProf)(?<!\bSt)(?<!\bJr)(?<!\bSr)(?<!\bvs)(?<!\betc)\.\s+/g, '.|||')
+        .replace(/(?<!\bMr)(?<!\bMrs)(?<!\bMs)(?<!\bDr)(?<!\bProf)(?<!\bSt)(?<!\bJr)(?<!\bSr)(?<!\bvs)(?<!\betc)\.\"/g, '.|||"')
+        .replace(/!\s+/g, '!|||').replace(/\?\s+/g, '?|||').split('|||');
+      for (let p of parts) { p = p.trim(); if (p.length >= 2 && /[a-zA-Z]/.test(p)) result.push(p); }
+    }
+    return result;
+  }
+
+  function splitChineseSentences(text) {
+    const result = [];
+    const lines = text.split('\n').filter(l => l.trim().length > 0);
+    for (let line of lines) {
+      const parts = line.split(/(?<=[。！？])/);
+      for (let p of parts) { p = p.trim(); if (p.length >= 2) result.push(p); }
+    }
+    return result;
+  }
+
+  function saveProgress() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ enIndex: currentIndex, zhPage: currentZhPage, timestamp: Date.now() }));
+  }
+  function loadProgress() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return null; }
+  }
+
+  // ========== 渲染英文区 ==========
+  function renderEnDisplay() {
+    if (enSentences.length === 0) {
+      enDisplay.innerHTML = '<div style="text-align:center;color:#6a6a8a;padding:20px;">请导入英文文件</div>';
+      return;
+    }
+    enDisplay.innerHTML = '';
+    const indices = [];
+    if (currentIndex > 0) indices.push(currentIndex - 1);
+    indices.push(currentIndex);
+    if (currentIndex < enSentences.length - 1) indices.push(currentIndex + 1);
+
+    for (const i of indices) {
+      const div = document.createElement('div');
+      div.className = 'sentence-item';
+      if (i === currentIndex) div.classList.add('active');
+      div.dataset.index = i;
+
+      const enText = document.createElement('span');
+      enText.className = 'en-text';
+      enText.textContent = enSentences[i];
+      div.appendChild(enText);
+
+      // 点击事件：区分单击和双击
+      div.addEventListener('click', function(e) {
+        const now = Date.now();
+        const timeSinceLastClick = now - lastClickTime;
+        lastClickTime = now;
+
+        if (timeSinceLastClick < 400) {
+          // 双击：朗读句子
+          if (clickTimeout) clearTimeout(clickTimeout);
+          clickTimeout = null;
+          hidePopup();
+          stopAutoPlay();
+          currentIndex = parseInt(this.dataset.index);
+          renderEnDisplay();
+          speakCurrent();
+          saveProgress();
+        } else {
+          // 可能是单击，等待确认
+          if (clickTimeout) clearTimeout(clickTimeout);
+          clickTimeout = setTimeout(() => {
+            // 确认是单击：查词
+            const word = getWordAtPoint(e);
+            if (word) {
+              const meaning = lookupOffline(word);
+              if (meaning) {
+                showPopup(word, meaning);
+              } else {
+                showPopup(word, '词典中未收录此词');
+              }
+            }
+            clickTimeout = null;
+          }, 400);
+        }
+      });
+
+      enDisplay.appendChild(div);
+    }
+    counter.textContent = `${currentIndex + 1}/${enSentences.length}`;
+  }
+
+  function renderZhDisplay() {
+    if (zhSentences.length === 0) {
+      zhDisplay.innerHTML = '<div class="zh-empty">导入中文译文后可在此对照查看</div>';
+      zhPageInfo.textContent = '-/-';
+      zhPagePrev.disabled = zhPageNext.disabled = true;
+      return;
+    }
+    const totalPages = Math.ceil(zhSentences.length / ZH_PAGE_SIZE);
+    if (currentZhPage >= totalPages) currentZhPage = totalPages - 1;
+    zhPageInfo.textContent = `${currentZhPage + 1}/${totalPages}`;
+    zhPagePrev.disabled = currentZhPage <= 0;
+    zhPageNext.disabled = currentZhPage >= totalPages - 1;
+    zhDisplay.innerHTML = '';
+    const start = currentZhPage * ZH_PAGE_SIZE;
+    for (let i = start; i < Math.min(start + ZH_PAGE_SIZE, zhSentences.length); i++) {
+      const div = document.createElement('div');
+      div.className = 'zh-sentence-item';
+      div.textContent = zhSentences[i];
+      zhDisplay.appendChild(div);
+    }
+  }
+
+  function speakCurrent() {
+    if (enSentences.length === 0) return;
+    stopSpeaking();
+    enDisplay.querySelectorAll('.sentence-item').forEach(item => {
+      if (parseInt(item.dataset.index) === currentIndex) item.classList.add('speaking');
+    });
+    const utterance = new SpeechSynthesisUtterance(enSentences[currentIndex]);
+    utterance.lang = 'en-US';
+    utterance.rate = speakRate;
+    utterance.onend = () => {
+      enDisplay.querySelectorAll('.sentence-item').forEach(i => i.classList.remove('speaking'));
+      if (isAutoPlaying && currentIndex < enSentences.length - 1) {
+        currentIndex++; renderEnDisplay(); saveProgress(); speakCurrent();
+      } else if (isAutoPlaying) { stopAutoPlay(); }
+    };
+    speechSynth.speak(utterance);
+  }
+
+  function stopSpeaking() {
+    speechSynth.cancel();
+    enDisplay.querySelectorAll('.sentence-item').forEach(i => i.classList.remove('speaking'));
+  }
+  function startAutoPlay() {
+    if (enSentences.length === 0) return;
+    isAutoPlaying = true; autoBtn.classList.add('hidden'); stopBtn.classList.remove('hidden'); speakCurrent();
+  }
+  function stopAutoPlay() {
+    isAutoPlaying = false; autoBtn.classList.remove('hidden'); stopBtn.classList.add('hidden');
+    stopSpeaking(); saveProgress();
+  }
+  function prevSentence() {
+    if (enSentences.length === 0) return;
+    stopAutoPlay(); currentIndex = Math.max(0, currentIndex - 1);
+    renderEnDisplay(); saveProgress(); speakCurrent();
+  }
+  function nextSentence() {
+    if (enSentences.length === 0) return;
+    stopAutoPlay(); currentIndex = Math.min(enSentences.length - 1, currentIndex + 1);
+    renderEnDisplay(); saveProgress(); speakCurrent();
+  }
+
+  function updateEnFileUI(name, count) {
+    enFileName.textContent = name; enFileDetail.textContent = `${count} 句`;
+    enImportBtn.textContent = '📗 更换'; enRemoveBtn.classList.remove('hidden');
+  }
+  function updateZhFileUI(name, count) {
+    zhFileName.textContent = name; zhFileDetail.textContent = `${count} 句`;
+    zhImportBtn.textContent = '📕 更换'; zhRemoveBtn.classList.remove('hidden');
+  }
+  function resetEnFile() {
+    enSentences = []; currentIndex = 0; enFileName.textContent = '未导入英文文件';
+    enFileDetail.textContent = ''; enImportBtn.textContent = '📗 导入'; enRemoveBtn.classList.add('hidden');
+    enDisplay.innerHTML = '<div style="text-align:center;color:#6a6a8a;padding:20px;">请导入英文文件</div>';
+    counter.textContent = '0/0'; stopAutoPlay(); saveProgress();
+  }
+  function resetZhFile() {
+    zhSentences = []; currentZhPage = 0; zhFileName.textContent = '未导入中文译文';
+    zhFileDetail.textContent = ''; zhImportBtn.textContent = '📕 导入'; zhRemoveBtn.classList.add('hidden');
+    zhDisplay.innerHTML = '<div class="zh-empty">导入中文译文后可在此对照查看</div>';
+    zhPageInfo.textContent = '-/-';
+  }
+
+  async function readFileWithEncoding(file) {
+    let text = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('读取失败'));
+      reader.readAsText(file, 'UTF-8');
+    });
+    const sample = text.substring(0, 500);
+    if ((sample.match(/[^\x00-\x7F\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\n\r\t ]/g) || []).length > sample.length * 0.1) {
+      text = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('读取失败'));
+        reader.readAsText(file, 'GBK');
+      });
+    }
+    return text;
+  }
+
+  async function importEnFile(file) {
+    try {
+      let text = await readFileWithEncoding(file);
+      text = cleanText(text);
+      const sentences = splitEnglish(text);
+      if (!sentences.length) { alert('未能识别到英文句子'); return; }
+      enSentences = sentences;
+      const saved = loadProgress();
+      currentIndex = (saved && saved.enIndex !== undefined) ? Math.min(saved.enIndex, sentences.length - 1) : 0;
+      updateEnFileUI(file.name, sentences.length);
+      renderEnDisplay(); saveProgress();
+    } catch (err) { alert('读取失败: ' + err.message); }
+  }
+
+  async function importZhFile(file) {
+    try {
+      let text = await readFileWithEncoding(file);
+      text = cleanText(text);
+      const sentences = splitChineseSentences(text);
+      if (!sentences.length) { alert('未能识别到中文句子'); return; }
+      zhSentences = sentences;
+      const saved = loadProgress();
+      const totalPages = Math.ceil(sentences.length / ZH_PAGE_SIZE);
+      currentZhPage = (saved && saved.zhPage !== undefined) ? Math.min(saved.zhPage, totalPages - 1) : 0;
+      updateZhFileUI(file.name, sentences.length);
+      renderZhDisplay(); saveProgress();
+    } catch (err) { alert('读取失败: ' + err.message); }
+  }
+
+  // ========== 事件 ==========
+  enImportBtn.addEventListener('click', () => enFileInput.click());
+  zhImportBtn.addEventListener('click', () => zhFileInput.click());
+  enFileInput.addEventListener('change', (e) => { if (e.target.files[0]) importEnFile(e.target.files[0]); });
+  zhFileInput.addEventListener('change', (e) => { if (e.target.files[0]) importZhFile(e.target.files[0]); });
+  enRemoveBtn.addEventListener('click', () => { if (confirm('移除英文文件？')) resetEnFile(); });
+  zhRemoveBtn.addEventListener('click', () => { if (confirm('移除中文文件？')) resetZhFile(); });
+  prevBtn.addEventListener('click', prevSentence);
+  nextBtn.addEventListener('click', nextSentence);
+  speakBtn.addEventListener('click', () => { stopAutoPlay(); speakCurrent(); saveProgress(); });
+  autoBtn.addEventListener('click', startAutoPlay);
+  stopBtn.addEventListener('click', stopAutoPlay);
+  speedBtn.addEventListener('click', () => {
+    const speeds = [0.7, 0.85, 1.0, 1.2, 1.5];
+    speakRate = speeds[(speeds.indexOf(speakRate) + 1) % speeds.length];
+    speedBtn.textContent = speakRate + 'x';
+  });
+  zhPagePrev.addEventListener('click', () => { if (currentZhPage > 0) { currentZhPage--; renderZhDisplay(); saveProgress(); } });
+  zhPageNext.addEventListener('click', () => {
+    if (currentZhPage < Math.ceil(zhSentences.length / ZH_PAGE_SIZE) - 1) { currentZhPage++; renderZhDisplay(); saveProgress(); }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (!enSentences.length) return;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); prevSentence(); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); nextSentence(); }
+    else if (e.key === ' ') { e.preventDefault(); stopAutoPlay(); speakCurrent(); }
+  });
+  let touchStartX = 0;
+  document.getElementById('enSection').addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; });
+  document.getElementById('enSection').addEventListener('touchend', (e) => {
+    if (!enSentences.length) return;
+    if (Math.abs(touchStartX - e.changedTouches[0].clientX) > 50) {
+      touchStartX > e.changedTouches[0].clientX ? nextSentence() : prevSentence();
+    }
+  });
+  window.addEventListener('beforeunload', () => { saveProgress(); speechSynth.cancel(); });
+  setTimeout(initDictionary, 100);
+})();
+</script>
+</body>
+</html>
