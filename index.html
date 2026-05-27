@@ -76,11 +76,6 @@
       border-radius: 12px; padding: 12px 16px;
       box-shadow: 0 8px 32px rgba(0,0,0,0.6);
       min-width: 120px; max-width: 280px;
-      animation: popIn 0.2s ease-out;
-    }
-    @keyframes popIn {
-      from { opacity: 0; transform: scale(0.9); }
-      to { opacity: 1; transform: scale(1); }
     }
     .word-popup .popup-word {
       font-size: 16px; font-weight: 600; color: #c4b5fd;
@@ -223,11 +218,11 @@
   let speakRate = 1.0;
   let isAutoPlaying = false;
   const speechSynth = window.speechSynthesis;
-  const STORAGE_KEY = 'reader_progress_v11'; // 新版本用新键名，彻底避免旧数据干扰
+  const STORAGE_KEY = 'reader_progress_v13';
   let lastClickTime = 0;
   let clickTimeout = null;
-  let currentEnFileName = ''; // 保存当前英文文件名，用于进度记录
-  let currentZhFileName = ''; // 保存当前中文文件名
+  let currentEnFileName = '';
+  let currentZhFileName = '';
 
   // ========== 离线词典 ==========
   let offlineDict = {};
@@ -254,7 +249,7 @@
 
     const saved = loadProgress();
     if (saved && saved.enFileName) {
-      statusBar.textContent += ` | 📌 上次文件: ${saved.enFileName} (第${saved.enIndex+1}句)`;
+      statusBar.textContent += ` | 📌 上次: ${saved.enFileName} (第${saved.enIndex+1}句)`;
     }
   }
 
@@ -307,7 +302,6 @@
   popupClose.addEventListener('click', (e) => { e.stopPropagation(); hidePopup(); });
   popupOverlay.addEventListener('click', hidePopup);
 
-  // ========== 获取点击位置的单词 ==========
   function getWordAtPoint(event) {
     const selection = window.getSelection();
     const selectedText = selection.toString().trim();
@@ -377,7 +371,6 @@
     return result;
   }
 
-  // ========== 进度保存与加载（统一格式，始终包含文件名） ==========
   function saveProgress() {
     const data = {
       enIndex: currentIndex,
@@ -393,11 +386,7 @@
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return null; }
   }
 
-  function clearProgress() {
-    localStorage.removeItem(STORAGE_KEY);
-  }
-
-  // ========== 渲染英文区 ==========
+  // ========== 渲染 ==========
   function renderEnDisplay() {
     if (enSentences.length === 0) {
       enDisplay.innerHTML = '<div style="text-align:center;color:#6a6a8a;padding:20px;">请导入英文文件</div>';
@@ -523,21 +512,14 @@
     renderEnDisplay(); saveProgress(); speakCurrent();
   }
 
-  // ========== 文件管理 ==========
   function updateEnFileUI(name, count) {
-    enFileName.textContent = name;
-    enFileDetail.textContent = `${count} 句`;
-    enImportBtn.textContent = '📗 更换';
-    enRemoveBtn.classList.remove('hidden');
+    enFileName.textContent = name; enFileDetail.textContent = `${count} 句`;
+    enImportBtn.textContent = '📗 更换'; enRemoveBtn.classList.remove('hidden');
   }
-
   function updateZhFileUI(name, count) {
-    zhFileName.textContent = name;
-    zhFileDetail.textContent = `${count} 句`;
-    zhImportBtn.textContent = '📕 更换';
-    zhRemoveBtn.classList.remove('hidden');
+    zhFileName.textContent = name; zhFileDetail.textContent = `${count} 句`;
+    zhImportBtn.textContent = '📕 更换'; zhRemoveBtn.classList.remove('hidden');
   }
-
   function resetEnFile() {
     enSentences = []; currentIndex = 0; currentEnFileName = '';
     enFileName.textContent = '未导入英文文件'; enFileDetail.textContent = '';
@@ -545,7 +527,6 @@
     enDisplay.innerHTML = '<div style="text-align:center;color:#6a6a8a;padding:20px;">请导入英文文件</div>';
     counter.textContent = '0/0'; stopAutoPlay(); saveProgress();
   }
-
   function resetZhFile() {
     zhSentences = []; currentZhPage = 0; currentZhFileName = '';
     zhFileName.textContent = '未导入中文译文'; zhFileDetail.textContent = '';
@@ -583,7 +564,10 @@
       currentEnFileName = file.name;
 
       const saved = loadProgress();
-      // 文件名完全匹配才恢复进度
+      if (!currentZhFileName && saved && saved.zhFileName) {
+        currentZhFileName = saved.zhFileName;
+      }
+
       if (saved && saved.enFileName === file.name && saved.enIndex < sentences.length) {
         currentIndex = saved.enIndex;
       } else {
@@ -606,6 +590,10 @@
       currentZhFileName = file.name;
 
       const saved = loadProgress();
+      if (!currentEnFileName && saved && saved.enFileName) {
+        currentEnFileName = saved.enFileName;
+      }
+
       const totalPages = Math.ceil(sentences.length / ZH_PAGE_SIZE);
       if (saved && saved.zhFileName === file.name && saved.zhPage < totalPages) {
         currentZhPage = saved.zhPage;
@@ -669,9 +657,6 @@
 
   window.addEventListener('beforeunload', () => { saveProgress(); speechSynth.cancel(); });
   setTimeout(initDictionary, 100);
-
-  // 清除可能存在的旧版本进度（避免干扰）
-  // 如果你之前用过旧版，可以在控制台执行 localStorage.removeItem('reader_progress_v10') 等
 })();
 </script>
 </body>
