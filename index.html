@@ -218,12 +218,11 @@
   let speakRate = 1.0;
   let isAutoPlaying = false;
   const speechSynth = window.speechSynthesis;
-  const STORAGE_KEY = 'reader_progress_v14';
+  const STORAGE_KEY = 'reader_progress_v15';
   let lastClickTime = 0;
   let clickTimeout = null;
   let currentEnFileName = '';
   let currentZhFileName = '';
-  // 标记文件是否已加载
   let enLoaded = false;
   let zhLoaded = false;
 
@@ -374,7 +373,7 @@
     return result;
   }
 
-  // ========== 进度保存（关键修复：仅当文件已加载时才更新对应的进度） ==========
+  // ========== 进度保存 ==========
   function saveProgress() {
     const saved = loadProgress();
     const data = {
@@ -472,13 +471,65 @@
     }
   }
 
+  // ========== 朗读优化 ==========
+  function preprocessTextForSpeech(text) {
+    // 替换常见缩写，避免 TTS 在句号处异常停顿
+    return text
+      .replace(/\bMr\./g, 'Mister')
+      .replace(/\bMrs\./g, 'Missus')
+      .replace(/\bMs\./g, 'Miz')
+      .replace(/\bDr\./g, 'Doctor')
+      .replace(/\bProf\./g, 'Professor')
+      .replace(/\bSt\./g, 'Street') // 避免 "Street" 缩写干扰
+      .replace(/\bvs\./g, 'versus')
+      .replace(/\betc\./g, 'et cetera');
+  }
+
   function speakCurrent() {
     if (enSentences.length === 0) return;
+    const rawText = enSentences[currentIndex];
+    if (!rawText) return;
+
     stopSpeaking();
     enDisplay.querySelectorAll('.sentence-item').forEach(item => {
       if (parseInt(item.dataset.index) === currentIndex) item.classList.add('speaking');
     });
-    const utterance = new SpeechSynthesisUtterance(enSentences[currentIndex]);
+
+    const processedText = preprocessTextForSpeech(rawText);
+
+    // 长句分段：字符数超过150且在逗号/分号处分割
+    const MAX_CHARS = 150;
+    if (processedText.length > MAX_CHARS) {
+      const segments = processedText.split(/(?<=[,;])/);
+      if (segments.length > 1) {
+        let i = 0;
+        const speakSegments = () => {
+          if (i >= segments.length) {
+            enDisplay.querySelectorAll('.sentence-item').forEach(item => item.classList.remove('speaking'));
+            if (isAutoPlaying && currentIndex < enSentences.length - 1) {
+              currentIndex++; renderEnDisplay(); saveProgress(); speakCurrent();
+            } else if (isAutoPlaying) {
+              stopAutoPlay();
+            }
+            return;
+          }
+          const utterance = new SpeechSynthesisUtterance(segments[i].trim());
+          utterance.lang = 'en-US';
+          utterance.rate = speakRate;
+          utterance.onend = () => {
+            i++;
+            // 段落间短暂停顿 0.3 秒
+            setTimeout(speakSegments, 300);
+          };
+          speechSynth.speak(utterance);
+        };
+        speakSegments();
+        return;
+      }
+    }
+
+    // 普通短句直接朗读
+    const utterance = new SpeechSynthesisUtterance(processedText);
     utterance.lang = 'en-US';
     utterance.rate = speakRate;
     utterance.onend = () => {
@@ -559,7 +610,7 @@
     return text;
   }
 
-  // ========== 导入文件（修复进度覆盖问题） ==========
+  // ========== 导入文件 ==========
   async function importEnFile(file) {
     try {
       let text = await readFileWithEncoding(file);
@@ -571,7 +622,6 @@
       enLoaded = true;
 
       const saved = loadProgress();
-      // 如果中文还没加载，从保存的进度中恢复中文文件名
       if (!zhLoaded && saved && saved.zhFileName) {
         currentZhFileName = saved.zhFileName;
       }
@@ -599,7 +649,6 @@
       zhLoaded = true;
 
       const saved = loadProgress();
-      // 如果英文还没加载，从保存的进度中恢复英文文件名
       if (!enLoaded && saved && saved.enFileName) {
         currentEnFileName = saved.enFileName;
       }
