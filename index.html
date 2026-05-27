@@ -65,7 +65,6 @@
       word-wrap: break-word; user-select: text;
     }
 
-    /* 悬浮窗 */
     .popup-overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       z-index: 998; display: none;
@@ -224,9 +223,11 @@
   let speakRate = 1.0;
   let isAutoPlaying = false;
   const speechSynth = window.speechSynthesis;
-  const STORAGE_KEY = 'reader_progress_v10';
+  const STORAGE_KEY = 'reader_progress_v11'; // 新版本用新键名，彻底避免旧数据干扰
   let lastClickTime = 0;
   let clickTimeout = null;
+  let currentEnFileName = ''; // 保存当前英文文件名，用于进度记录
+  let currentZhFileName = ''; // 保存当前中文文件名
 
   // ========== 离线词典 ==========
   let offlineDict = {};
@@ -251,10 +252,9 @@
       statusBar.textContent = '⚠️ 词典未加载';
     }
 
-    // 检查是否有上次阅读进度
     const saved = loadProgress();
-    if (saved) {
-      statusBar.textContent += ' | 有未完成进度，导入同名文件可恢复';
+    if (saved && saved.enFileName) {
+      statusBar.textContent += ` | 📌 上次文件: ${saved.enFileName} (第${saved.enIndex+1}句)`;
     }
   }
 
@@ -262,9 +262,7 @@
     if (!dictLoaded) return null;
     let clean = word.replace(/[^a-zA-Z]/g, '').toLowerCase().trim();
     if (!clean || clean.length < 2) return null;
-
     if (offlineDict[clean]) return offlineDict[clean];
-
     const suffixes = [
       ['s', ''], ['es', ''], ['ies', 'y'], ['ves', 'f'], ['ves', 'fe'],
       ['ed', ''], ['ied', 'y'], ['d', ''], ['ing', ''], ['ing', 'e'],
@@ -293,7 +291,6 @@
     wordPopup.style.top = (rect.top + rect.height / 2 - 80) + 'px';
     wordPopup.style.transform = 'translate(-50%, -50%)';
 
-    // 朗读单词（使用当前语速）
     speechSynth.cancel();
     const utterance = new SpeechSynthesisUtterance(word);
     utterance.lang = 'en-US';
@@ -380,17 +377,24 @@
     return result;
   }
 
-  // ========== 进度保存与加载 ==========
+  // ========== 进度保存与加载（统一格式，始终包含文件名） ==========
   function saveProgress() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    const data = {
       enIndex: currentIndex,
       zhPage: currentZhPage,
+      enFileName: currentEnFileName,
+      zhFileName: currentZhFileName,
       timestamp: Date.now()
-    }));
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }
 
   function loadProgress() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return null; }
+  }
+
+  function clearProgress() {
+    localStorage.removeItem(STORAGE_KEY);
   }
 
   // ========== 渲染英文区 ==========
@@ -482,7 +486,7 @@
     });
     const utterance = new SpeechSynthesisUtterance(enSentences[currentIndex]);
     utterance.lang = 'en-US';
-    utterance.rate = speakRate;  // 确保使用最新语速
+    utterance.rate = speakRate;
     utterance.onend = () => {
       enDisplay.querySelectorAll('.sentence-item').forEach(i => i.classList.remove('speaking'));
       if (isAutoPlaying && currentIndex < enSentences.length - 1) {
@@ -535,7 +539,7 @@
   }
 
   function resetEnFile() {
-    enSentences = []; currentIndex = 0;
+    enSentences = []; currentIndex = 0; currentEnFileName = '';
     enFileName.textContent = '未导入英文文件'; enFileDetail.textContent = '';
     enImportBtn.textContent = '📗 导入'; enRemoveBtn.classList.add('hidden');
     enDisplay.innerHTML = '<div style="text-align:center;color:#6a6a8a;padding:20px;">请导入英文文件</div>';
@@ -543,7 +547,7 @@
   }
 
   function resetZhFile() {
-    zhSentences = []; currentZhPage = 0;
+    zhSentences = []; currentZhPage = 0; currentZhFileName = '';
     zhFileName.textContent = '未导入中文译文'; zhFileDetail.textContent = '';
     zhImportBtn.textContent = '📕 导入'; zhRemoveBtn.classList.add('hidden');
     zhDisplay.innerHTML = '<div class="zh-empty">导入中文译文后可在此对照查看</div>';
@@ -576,17 +580,19 @@
       const sentences = splitEnglish(text);
       if (!sentences.length) { alert('未能识别到英文句子'); return; }
       enSentences = sentences;
+      currentEnFileName = file.name;
+
       const saved = loadProgress();
-      // 只有文件名与上次相同才恢复进度，否则从头开始
-      if (saved && saved.fileName === file.name) {
-        currentIndex = Math.min(saved.enIndex, sentences.length - 1);
+      // 文件名完全匹配才恢复进度
+      if (saved && saved.enFileName === file.name && saved.enIndex < sentences.length) {
+        currentIndex = saved.enIndex;
       } else {
         currentIndex = 0;
       }
+
       updateEnFileUI(file.name, sentences.length);
       renderEnDisplay();
-      // 保存进度时记录文件名
-      saveProgressWithFileName(file.name);
+      saveProgress();
     } catch (err) { alert('读取失败: ' + err.message); }
   }
 
@@ -597,26 +603,20 @@
       const sentences = splitChineseSentences(text);
       if (!sentences.length) { alert('未能识别到中文句子'); return; }
       zhSentences = sentences;
+      currentZhFileName = file.name;
+
       const saved = loadProgress();
       const totalPages = Math.ceil(sentences.length / ZH_PAGE_SIZE);
-      if (saved && saved.fileName === file.name) {
-        currentZhPage = Math.min(saved.zhPage, totalPages - 1);
+      if (saved && saved.zhFileName === file.name && saved.zhPage < totalPages) {
+        currentZhPage = saved.zhPage;
       } else {
         currentZhPage = 0;
       }
+
       updateZhFileUI(file.name, sentences.length);
       renderZhDisplay();
-      saveProgressWithFileName(file.name);
+      saveProgress();
     } catch (err) { alert('读取失败: ' + err.message); }
-  }
-
-  function saveProgressWithFileName(fileName) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      enIndex: currentIndex,
-      zhPage: currentZhPage,
-      fileName: fileName,
-      timestamp: Date.now()
-    }));
   }
 
   // ========== 事件绑定 ==========
@@ -633,14 +633,12 @@
   autoBtn.addEventListener('click', startAutoPlay);
   stopBtn.addEventListener('click', stopAutoPlay);
 
-  // 语速按钮：点击切换，并立即更新显示
   speedBtn.addEventListener('click', () => {
     const speeds = [0.7, 0.85, 1.0, 1.2, 1.5];
     const currentIdx = speeds.indexOf(speakRate);
     const nextIdx = (currentIdx + 1) % speeds.length;
     speakRate = speeds[nextIdx];
     speedBtn.textContent = speakRate + 'x';
-    // 如果正在朗读，立即改变当前朗读的速度
     if (speechSynth.speaking) {
       speechSynth.cancel();
       speakCurrent();
@@ -671,6 +669,9 @@
 
   window.addEventListener('beforeunload', () => { saveProgress(); speechSynth.cancel(); });
   setTimeout(initDictionary, 100);
+
+  // 清除可能存在的旧版本进度（避免干扰）
+  // 如果你之前用过旧版，可以在控制台执行 localStorage.removeItem('reader_progress_v10') 等
 })();
 </script>
 </body>
