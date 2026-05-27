@@ -218,11 +218,14 @@
   let speakRate = 1.0;
   let isAutoPlaying = false;
   const speechSynth = window.speechSynthesis;
-  const STORAGE_KEY = 'reader_progress_v13';
+  const STORAGE_KEY = 'reader_progress_v14';
   let lastClickTime = 0;
   let clickTimeout = null;
   let currentEnFileName = '';
   let currentZhFileName = '';
+  // 标记文件是否已加载
+  let enLoaded = false;
+  let zhLoaded = false;
 
   // ========== 离线词典 ==========
   let offlineDict = {};
@@ -371,12 +374,14 @@
     return result;
   }
 
+  // ========== 进度保存（关键修复：仅当文件已加载时才更新对应的进度） ==========
   function saveProgress() {
+    const saved = loadProgress();
     const data = {
-      enIndex: currentIndex,
-      zhPage: currentZhPage,
-      enFileName: currentEnFileName,
-      zhFileName: currentZhFileName,
+      enIndex: enLoaded ? currentIndex : (saved ? saved.enIndex : 0),
+      zhPage: zhLoaded ? currentZhPage : (saved ? saved.zhPage : 0),
+      enFileName: currentEnFileName || (saved ? saved.enFileName : ''),
+      zhFileName: currentZhFileName || (saved ? saved.zhFileName : ''),
       timestamp: Date.now()
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -521,14 +526,14 @@
     zhImportBtn.textContent = '📕 更换'; zhRemoveBtn.classList.remove('hidden');
   }
   function resetEnFile() {
-    enSentences = []; currentIndex = 0; currentEnFileName = '';
+    enSentences = []; currentIndex = 0; currentEnFileName = ''; enLoaded = false;
     enFileName.textContent = '未导入英文文件'; enFileDetail.textContent = '';
     enImportBtn.textContent = '📗 导入'; enRemoveBtn.classList.add('hidden');
     enDisplay.innerHTML = '<div style="text-align:center;color:#6a6a8a;padding:20px;">请导入英文文件</div>';
     counter.textContent = '0/0'; stopAutoPlay(); saveProgress();
   }
   function resetZhFile() {
-    zhSentences = []; currentZhPage = 0; currentZhFileName = '';
+    zhSentences = []; currentZhPage = 0; currentZhFileName = ''; zhLoaded = false;
     zhFileName.textContent = '未导入中文译文'; zhFileDetail.textContent = '';
     zhImportBtn.textContent = '📕 导入'; zhRemoveBtn.classList.add('hidden');
     zhDisplay.innerHTML = '<div class="zh-empty">导入中文译文后可在此对照查看</div>';
@@ -554,6 +559,7 @@
     return text;
   }
 
+  // ========== 导入文件（修复进度覆盖问题） ==========
   async function importEnFile(file) {
     try {
       let text = await readFileWithEncoding(file);
@@ -562,9 +568,11 @@
       if (!sentences.length) { alert('未能识别到英文句子'); return; }
       enSentences = sentences;
       currentEnFileName = file.name;
+      enLoaded = true;
 
       const saved = loadProgress();
-      if (!currentZhFileName && saved && saved.zhFileName) {
+      // 如果中文还没加载，从保存的进度中恢复中文文件名
+      if (!zhLoaded && saved && saved.zhFileName) {
         currentZhFileName = saved.zhFileName;
       }
 
@@ -588,9 +596,11 @@
       if (!sentences.length) { alert('未能识别到中文句子'); return; }
       zhSentences = sentences;
       currentZhFileName = file.name;
+      zhLoaded = true;
 
       const saved = loadProgress();
-      if (!currentEnFileName && saved && saved.enFileName) {
+      // 如果英文还没加载，从保存的进度中恢复英文文件名
+      if (!enLoaded && saved && saved.enFileName) {
         currentEnFileName = saved.enFileName;
       }
 
