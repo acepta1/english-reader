@@ -128,7 +128,7 @@
     </div>
     <button class="file-btn" id="enImportBtn">📗 导入</button>
     <button class="file-btn danger hidden" id="enRemoveBtn">✕</button>
-	<input type="file" id="enFileInput" accept="text/plain" class="hidden">
+    <input type="file" id="enFileInput" accept=".txt" class="hidden">
   </div>
 
   <div class="file-manager">
@@ -138,7 +138,7 @@
     </div>
     <button class="file-btn" id="zhImportBtn">📕 导入</button>
     <button class="file-btn danger hidden" id="zhRemoveBtn">✕</button>
-    <input type="file" id="zhFileInput" accept="text/plain" class="hidden">
+    <input type="file" id="zhFileInput" accept=".txt" class="hidden">
   </div>
 
   <div class="controls" id="controls">
@@ -172,7 +172,7 @@
     </div>
   </div>
 
-  <div class="info">💡 点击单词弹出释义 | 再点关闭 | 双击句子朗读 | 中文区手动翻页</div>
+  <div class="info">💡 点击单词弹出释义+朗读 | 双击句子朗读 | 语速可调 | 自动保存进度</div>
 </div>
 
 <div class="popup-overlay" id="popupOverlay"></div>
@@ -186,6 +186,7 @@
 
 <script>
 (function() {
+  // ========== DOM ==========
   const enFileInput = document.getElementById('enFileInput');
   const zhFileInput = document.getElementById('zhFileInput');
   const enImportBtn = document.getElementById('enImportBtn');
@@ -249,6 +250,12 @@
     } else {
       statusBar.textContent = '⚠️ 词典未加载';
     }
+
+    // 检查是否有上次阅读进度
+    const saved = loadProgress();
+    if (saved) {
+      statusBar.textContent += ' | 有未完成进度，导入同名文件可恢复';
+    }
   }
 
   function lookupOffline(word) {
@@ -285,11 +292,19 @@
     wordPopup.style.left = (rect.left + rect.width / 2) + 'px';
     wordPopup.style.top = (rect.top + rect.height / 2 - 80) + 'px';
     wordPopup.style.transform = 'translate(-50%, -50%)';
+
+    // 朗读单词（使用当前语速）
+    speechSynth.cancel();
+    const utterance = new SpeechSynthesisUtterance(word);
+    utterance.lang = 'en-US';
+    utterance.rate = speakRate;
+    speechSynth.speak(utterance);
   }
 
   function hidePopup() {
     wordPopup.classList.add('hidden');
     popupOverlay.classList.remove('show');
+    speechSynth.cancel();
   }
 
   popupClose.addEventListener('click', (e) => { e.stopPropagation(); hidePopup(); });
@@ -297,14 +312,12 @@
 
   // ========== 获取点击位置的单词 ==========
   function getWordAtPoint(event) {
-    // 先检查是否有选中文字
     const selection = window.getSelection();
     const selectedText = selection.toString().trim();
     if (selectedText && /^[a-zA-Z]+$/.test(selectedText) && selectedText.length > 1) {
       return selectedText;
     }
 
-    // 用坐标获取
     let range;
     if (document.caretRangeFromPoint) {
       range = document.caretRangeFromPoint(event.clientX, event.clientY);
@@ -367,9 +380,15 @@
     return result;
   }
 
+  // ========== 进度保存与加载 ==========
   function saveProgress() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ enIndex: currentIndex, zhPage: currentZhPage, timestamp: Date.now() }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      enIndex: currentIndex,
+      zhPage: currentZhPage,
+      timestamp: Date.now()
+    }));
   }
+
   function loadProgress() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return null; }
   }
@@ -397,14 +416,12 @@
       enText.textContent = enSentences[i];
       div.appendChild(enText);
 
-      // 点击事件：区分单击和双击
       div.addEventListener('click', function(e) {
         const now = Date.now();
         const timeSinceLastClick = now - lastClickTime;
         lastClickTime = now;
 
         if (timeSinceLastClick < 400) {
-          // 双击：朗读句子
           if (clickTimeout) clearTimeout(clickTimeout);
           clickTimeout = null;
           hidePopup();
@@ -414,10 +431,8 @@
           speakCurrent();
           saveProgress();
         } else {
-          // 可能是单击，等待确认
           if (clickTimeout) clearTimeout(clickTimeout);
           clickTimeout = setTimeout(() => {
-            // 确认是单击：查词
             const word = getWordAtPoint(e);
             if (word) {
               const meaning = lookupOffline(word);
@@ -467,7 +482,7 @@
     });
     const utterance = new SpeechSynthesisUtterance(enSentences[currentIndex]);
     utterance.lang = 'en-US';
-    utterance.rate = speakRate;
+    utterance.rate = speakRate;  // 确保使用最新语速
     utterance.onend = () => {
       enDisplay.querySelectorAll('.sentence-item').forEach(i => i.classList.remove('speaking'));
       if (isAutoPlaying && currentIndex < enSentences.length - 1) {
@@ -481,42 +496,56 @@
     speechSynth.cancel();
     enDisplay.querySelectorAll('.sentence-item').forEach(i => i.classList.remove('speaking'));
   }
+
   function startAutoPlay() {
     if (enSentences.length === 0) return;
     isAutoPlaying = true; autoBtn.classList.add('hidden'); stopBtn.classList.remove('hidden'); speakCurrent();
   }
+
   function stopAutoPlay() {
     isAutoPlaying = false; autoBtn.classList.remove('hidden'); stopBtn.classList.add('hidden');
     stopSpeaking(); saveProgress();
   }
+
   function prevSentence() {
     if (enSentences.length === 0) return;
     stopAutoPlay(); currentIndex = Math.max(0, currentIndex - 1);
     renderEnDisplay(); saveProgress(); speakCurrent();
   }
+
   function nextSentence() {
     if (enSentences.length === 0) return;
     stopAutoPlay(); currentIndex = Math.min(enSentences.length - 1, currentIndex + 1);
     renderEnDisplay(); saveProgress(); speakCurrent();
   }
 
+  // ========== 文件管理 ==========
   function updateEnFileUI(name, count) {
-    enFileName.textContent = name; enFileDetail.textContent = `${count} 句`;
-    enImportBtn.textContent = '📗 更换'; enRemoveBtn.classList.remove('hidden');
+    enFileName.textContent = name;
+    enFileDetail.textContent = `${count} 句`;
+    enImportBtn.textContent = '📗 更换';
+    enRemoveBtn.classList.remove('hidden');
   }
+
   function updateZhFileUI(name, count) {
-    zhFileName.textContent = name; zhFileDetail.textContent = `${count} 句`;
-    zhImportBtn.textContent = '📕 更换'; zhRemoveBtn.classList.remove('hidden');
+    zhFileName.textContent = name;
+    zhFileDetail.textContent = `${count} 句`;
+    zhImportBtn.textContent = '📕 更换';
+    zhRemoveBtn.classList.remove('hidden');
   }
+
   function resetEnFile() {
-    enSentences = []; currentIndex = 0; enFileName.textContent = '未导入英文文件';
-    enFileDetail.textContent = ''; enImportBtn.textContent = '📗 导入'; enRemoveBtn.classList.add('hidden');
+    enSentences = []; currentIndex = 0;
+    enFileName.textContent = '未导入英文文件'; enFileDetail.textContent = '';
+    enImportBtn.textContent = '📗 导入'; enRemoveBtn.classList.add('hidden');
     enDisplay.innerHTML = '<div style="text-align:center;color:#6a6a8a;padding:20px;">请导入英文文件</div>';
     counter.textContent = '0/0'; stopAutoPlay(); saveProgress();
   }
+
   function resetZhFile() {
-    zhSentences = []; currentZhPage = 0; zhFileName.textContent = '未导入中文译文';
-    zhFileDetail.textContent = ''; zhImportBtn.textContent = '📕 导入'; zhRemoveBtn.classList.add('hidden');
+    zhSentences = []; currentZhPage = 0;
+    zhFileName.textContent = '未导入中文译文'; zhFileDetail.textContent = '';
+    zhImportBtn.textContent = '📕 导入'; zhRemoveBtn.classList.add('hidden');
     zhDisplay.innerHTML = '<div class="zh-empty">导入中文译文后可在此对照查看</div>';
     zhPageInfo.textContent = '-/-';
   }
@@ -548,9 +577,16 @@
       if (!sentences.length) { alert('未能识别到英文句子'); return; }
       enSentences = sentences;
       const saved = loadProgress();
-      currentIndex = (saved && saved.enIndex !== undefined) ? Math.min(saved.enIndex, sentences.length - 1) : 0;
+      // 只有文件名与上次相同才恢复进度，否则从头开始
+      if (saved && saved.fileName === file.name) {
+        currentIndex = Math.min(saved.enIndex, sentences.length - 1);
+      } else {
+        currentIndex = 0;
+      }
       updateEnFileUI(file.name, sentences.length);
-      renderEnDisplay(); saveProgress();
+      renderEnDisplay();
+      // 保存进度时记录文件名
+      saveProgressWithFileName(file.name);
     } catch (err) { alert('读取失败: ' + err.message); }
   }
 
@@ -563,39 +599,67 @@
       zhSentences = sentences;
       const saved = loadProgress();
       const totalPages = Math.ceil(sentences.length / ZH_PAGE_SIZE);
-      currentZhPage = (saved && saved.zhPage !== undefined) ? Math.min(saved.zhPage, totalPages - 1) : 0;
+      if (saved && saved.fileName === file.name) {
+        currentZhPage = Math.min(saved.zhPage, totalPages - 1);
+      } else {
+        currentZhPage = 0;
+      }
       updateZhFileUI(file.name, sentences.length);
-      renderZhDisplay(); saveProgress();
+      renderZhDisplay();
+      saveProgressWithFileName(file.name);
     } catch (err) { alert('读取失败: ' + err.message); }
   }
 
-  // ========== 事件 ==========
+  function saveProgressWithFileName(fileName) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      enIndex: currentIndex,
+      zhPage: currentZhPage,
+      fileName: fileName,
+      timestamp: Date.now()
+    }));
+  }
+
+  // ========== 事件绑定 ==========
   enImportBtn.addEventListener('click', () => enFileInput.click());
   zhImportBtn.addEventListener('click', () => zhFileInput.click());
-  enFileInput.addEventListener('change', (e) => { if (e.target.files[0]) importEnFile(e.target.files[0]); });
-  zhFileInput.addEventListener('change', (e) => { if (e.target.files[0]) importZhFile(e.target.files[0]); });
+  enFileInput.addEventListener('change', (e) => { if (e.target.files[0]) importEnFile(e.target.files[0]); enFileInput.value = ''; });
+  zhFileInput.addEventListener('change', (e) => { if (e.target.files[0]) importZhFile(e.target.files[0]); zhFileInput.value = ''; });
   enRemoveBtn.addEventListener('click', () => { if (confirm('移除英文文件？')) resetEnFile(); });
   zhRemoveBtn.addEventListener('click', () => { if (confirm('移除中文文件？')) resetZhFile(); });
+
   prevBtn.addEventListener('click', prevSentence);
   nextBtn.addEventListener('click', nextSentence);
   speakBtn.addEventListener('click', () => { stopAutoPlay(); speakCurrent(); saveProgress(); });
   autoBtn.addEventListener('click', startAutoPlay);
   stopBtn.addEventListener('click', stopAutoPlay);
+
+  // 语速按钮：点击切换，并立即更新显示
   speedBtn.addEventListener('click', () => {
     const speeds = [0.7, 0.85, 1.0, 1.2, 1.5];
-    speakRate = speeds[(speeds.indexOf(speakRate) + 1) % speeds.length];
+    const currentIdx = speeds.indexOf(speakRate);
+    const nextIdx = (currentIdx + 1) % speeds.length;
+    speakRate = speeds[nextIdx];
     speedBtn.textContent = speakRate + 'x';
+    // 如果正在朗读，立即改变当前朗读的速度
+    if (speechSynth.speaking) {
+      speechSynth.cancel();
+      speakCurrent();
+    }
   });
+
   zhPagePrev.addEventListener('click', () => { if (currentZhPage > 0) { currentZhPage--; renderZhDisplay(); saveProgress(); } });
   zhPageNext.addEventListener('click', () => {
-    if (currentZhPage < Math.ceil(zhSentences.length / ZH_PAGE_SIZE) - 1) { currentZhPage++; renderZhDisplay(); saveProgress(); }
+    const totalPages = Math.ceil(zhSentences.length / ZH_PAGE_SIZE);
+    if (currentZhPage < totalPages - 1) { currentZhPage++; renderZhDisplay(); saveProgress(); }
   });
+
   document.addEventListener('keydown', (e) => {
     if (!enSentences.length) return;
     if (e.key === 'ArrowLeft') { e.preventDefault(); prevSentence(); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); nextSentence(); }
     else if (e.key === ' ') { e.preventDefault(); stopAutoPlay(); speakCurrent(); }
   });
+
   let touchStartX = 0;
   document.getElementById('enSection').addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; });
   document.getElementById('enSection').addEventListener('touchend', (e) => {
@@ -604,6 +668,7 @@
       touchStartX > e.changedTouches[0].clientX ? nextSentence() : prevSentence();
     }
   });
+
   window.addEventListener('beforeunload', () => { saveProgress(); speechSynth.cancel(); });
   setTimeout(initDictionary, 100);
 })();
